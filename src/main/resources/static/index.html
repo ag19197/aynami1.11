@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>绫波旅行助手 — 个人版</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>绫波旅行助手</h1>
+    <form id="planForm">
+      <label>目的地
+        <input type="text" id="destination" placeholder="例如：东京" required>
+      </label>
+      <label>天数
+        <input type="number" id="day" value="3" min="1" required>
+      </label>
+      <label>预算（例如：3000元/人）
+        <input type="text" id="budget" placeholder="例如：3000元" required>
+      </label>
+      <button type="submit">生成旅行计划</button>
+    </form>
+
+    <div id="result" class="result">
+      <h2>旅行计划</h2>
+      <pre id="output">请填写信息并点击“生成旅行计划”。</pre>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
