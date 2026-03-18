@@ -4,30 +4,30 @@
   <meta charset="utf-8">
   <title>绫波旅行助手 — 个人版</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css">
+  <style>
+    #map { height: 400px; margin-top: 20px; display: none; }
+    textarea { width: 100%; padding: 8px; margin-bottom: 10px; }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <h1>绫波旅行助手</h1>
-    <form id="planForm">
-      <label>目的地
-        <input type="text" id="destination" placeholder="例如：东京" required>
-      </label>
-      <label>天数
-        <input type="number" id="day" value="3" min="1" required>
-      </label>
-      <label>预算（例如：3000元/人）
-        <input type="text" id="budget" placeholder="例如：3000元" required>
-      </label>
-      <button type="submit">生成旅行计划</button>
-    </form>
+<div class="container">
+  <h1>绫波旅行助手</h1>
+  <form id="planForm">
+    <label>你的旅行需求</label>
+    <textarea id="query" rows="4" placeholder="例如：我想去东京玩3天，预算5000元，主要想去动漫圣地巡礼，尤其是《你的名字。》的取景地" required></textarea>
+    <button type="submit">生成旅行计划</button>
+  </form>
 
-    <div id="result" class="result">
-      <h2>旅行计划</h2>
-      <pre id="output">请填写信息并点击“生成旅行计划”。</pre>
-    </div>
+  <div id="map" style="display: none;"></div>
+  <div id="result" class="result">
+    <h2>旅行计划</h2>
+    <pre id="output">请描述你的旅行需求并点击“生成旅行计划”。</pre>
   </div>
+</div>
 
-  <script src="script.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
