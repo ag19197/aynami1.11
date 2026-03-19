@@ -1,18 +1,19 @@
 package com.gs.ayanami.service;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gs.ayanami.client.DifyClient;
 import com.gs.ayanami.model.ChatRequest;
 import com.gs.ayanami.model.ChatResponse;
-import com.gs.ayanami.model.TripPlan;
+import com.gs.ayanami.model.DifyResponse;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class ChatService {
 
     private final DifyClient difyClient;
-    private final ObjectMapper objectMapper; // Spring Boot会自动提供
+    private final ObjectMapper objectMapper; // 原有的，可能用于其他地方
 
     public ChatService(DifyClient difyClient, ObjectMapper objectMapper) {
         this.difyClient = difyClient;
@@ -26,25 +27,37 @@ public class ChatService {
         String answer = response.getAnswer();
         if (answer != null && !answer.isEmpty()) {
             try {
-                // 尝试提取 JSON 部分
-                String json = extractJsonFromString(answer);
-                TripPlan plan = objectMapper.readValue(json, TripPlan.class);
-                response.setPlan(plan);
-            } catch (Exception e) {
-                e.printStackTrace(); // 打印详细错误，便于调试
+                ObjectMapper lenientMapper = new ObjectMapper();
+                lenientMapper.configure(JsonParser.Feature.ALLOW_UNQUOTED_CONTROL_CHARS, true);
+                DifyResponse difyResp = lenientMapper.readValue(answer, DifyResponse.class);
+                response.setPlan(difyResp.getMap_data());
+                response.setRichText(difyResp.getText_plan());
+            }catch (Exception e) {
+                // 检查是否是字符串未闭合的错误
+                if (e instanceof JsonMappingException && e.getMessage().contains("expected closing quote for a string value")) {
+                    // 尝试修复：在末尾添加缺失的引号和大括号
+                    String fixedAnswer = answer + "\"}";
+                    try {
+                        ObjectMapper lenientMapper = new ObjectMapper();
+                        lenientMapper.configure(JsonParser.Feature.ALLOW_UNQUOTED_CONTROL_CHARS, true);
+                        DifyResponse difyResp = lenientMapper.readValue(fixedAnswer, DifyResponse.class);
+                        response.setPlan(difyResp.getMap_data());
+                        response.setRichText(difyResp.getText_plan());
+                        System.out.println("JSON 修复成功");
+                        return response;
+                    } catch (Exception ex) {
+                        // 修复失败，记录原始错误
+                        System.err.println("JSON 修复失败，原始错误：");
+                        e.printStackTrace();
+                        response.setRichText(answer); // 至少显示原始内容
+                    }
+                } else {
+                    // 其他解析错误
+                    e.printStackTrace();
+                    response.setRichText(answer);
+                }
             }
         }
         return response;
-    }
-
-    private String extractJsonFromString(String text) {
-        // 找到第一个 { 和最后一个 }
-        int start = text.indexOf('{');
-        int end = text.lastIndexOf('}');
-        if (start != -1 && end != -1 && end > start) {
-            return text.substring(start, end + 1);
-        }
-        // 如果没有找到，返回原文本（可能不是 JSON）
-        return text;
     }
 }

@@ -1,33 +1,313 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <title>绫波旅行助手 — 个人版</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>绫波旅行助手</title>
+  <!-- Leaflet 样式 -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="style.css">
   <style>
-    #map { height: 400px; margin-top: 20px; display: none; }
-    textarea { width: 100%; padding: 8px; margin-bottom: 10px; }
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    form {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 16px;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    button {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #map {
+      height: 400px;
+      margin-top: 20px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      display: none;
+    }
+    .result {
+      margin-top: 20px;
+    }
+    .result h2 {
+      margin-bottom: 10px;
+    }
+    #output {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-family: monospace;
+      border: 1px solid #eee;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 20px;
+    }
+    #debug {
+      margin-top: 10px;
+      padding: 10px;
+      background: #eee;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #333;
+      display: none;
+    }
   </style>
 </head>
 <body>
 <div class="container">
   <h1>绫波旅行助手</h1>
   <form id="planForm">
-    <label>你的旅行需求</label>
+    <label for="query">你的旅行需求</label>
     <textarea id="query" rows="4" placeholder="例如：我想去东京玩3天，预算5000元，主要想去动漫圣地巡礼，尤其是《你的名字。》的取景地" required></textarea>
     <button type="submit">生成旅行计划</button>
   </form>
 
-  <div id="map" style="display: none;"></div>
+  <!-- 调试面板（按 F12 后在控制台执行 showDebug() 显示） -->
+  <div id="debug">
+    <strong>调试日志：</strong>
+    <pre id="debugLog"></pre>
+  </div>
+
+  <!-- 地图容器 -->
+  <div id="map"></div>
+
+  <!-- 文本输出区域（显示格式化计划） -->
   <div id="result" class="result">
     <h2>旅行计划</h2>
     <pre id="output">请描述你的旅行需求并点击“生成旅行计划”。</pre>
   </div>
 </div>
 
+<!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="script.js"></script>
+<!-- 替换原有的 <script> 部分为以下内容 -->
+<script>
+  (function() {
+    // 调试日志函数
+    function log(message) {
+      const debugLog = document.getElementById('debugLog');
+      const timestamp = new Date().toLocaleTimeString();
+      if (debugLog) {
+        debugLog.textContent += `[${timestamp}] ${message}\n`;
+      }
+      console.log(message);
+    }
+
+    // 解决 Leaflet 图标被跟踪阻止的问题
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+      iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    });
+
+    document.getElementById('planForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const query = document.getElementById('query').value.trim();
+      const outputEl = document.getElementById('output');
+      const mapEl = document.getElementById('map');
+
+      outputEl.style.display = 'block';
+      mapEl.style.display = 'none';
+      outputEl.textContent = '正在生成，请稍候……';
+
+      log('提交表单，query: ' + query);
+
+      try {
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: query,
+            user: 'rei',
+            conversationId: ''
+          })
+        });
+
+        log('收到响应，状态: ' + resp.status);
+
+        if (!resp.ok) {
+          const txt = await resp.text();
+          outputEl.textContent = `请求失败：${resp.status}\n${txt}`;
+          log('请求失败: ' + txt);
+          return;
+        }
+
+        const data = await resp.json();
+        log('响应数据: ' + JSON.stringify(data).substring(0, 200) + '...');
+
+        if (data.plan) {
+          // 显示地图和富文本
+          mapEl.style.display = 'block';
+          outputEl.style.display = 'block';
+          renderMap(data.plan);
+          // 如果后端返回了 richText，就用它；否则回退到 data.answer（旧格式兼容）
+          if (data.richText) {
+            outputEl.textContent = data.richText; // 如果是 Markdown，可用 innerHTML 渲染，但简单起见用 textContent 保持原样
+          } else {
+            outputEl.textContent = data.answer || '无返回内容';
+          }
+        } else {
+          log('无 plan，显示普通文本');
+          mapEl.style.display = 'none';
+          outputEl.style.display = 'block';
+          outputEl.textContent = data.answer || '无返回内容';
+        }
+      } catch (err) {
+        outputEl.textContent = '网络错误：' + (err.message || err);
+        log('网络错误: ' + err.message);
+      }
+    });
+
+    function renderMap(mapData) {
+      log('进入 renderMap 函数');
+      const mapEl = document.getElementById('map');
+
+      // 检查地图容器高度
+      const height = mapEl.offsetHeight;
+      log('地图容器高度: ' + height);
+      if (height === 0) {
+        log('警告: 地图容器高度为0，可能无法显示');
+      }
+
+      // 如果已存在地图实例，先销毁
+      if (window.tripMap) {
+        window.tripMap.remove();
+        log('销毁原有地图实例');
+      }
+
+      // 默认视图（东京塔坐标）
+      let initLat = 35.6895, initLng = 139.6917;
+      const days = mapData.days || [];
+      const allLocations = days.flatMap(day => day.locations || []);
+
+      log('总地点数: ' + allLocations.length);
+
+      // 寻找第一个有效坐标
+      const firstValid = allLocations.find(loc => loc.latitude && loc.longitude && loc.latitude !== 0 && loc.longitude !== 0);
+      if (firstValid) {
+        initLat = firstValid.latitude;
+        initLng = firstValid.longitude;
+        log('第一个有效坐标: ' + initLat + ', ' + initLng);
+      } else {
+        log('无有效坐标，使用默认东京塔坐标');
+      }
+
+      // 初始化地图
+      log('初始化地图，视图: ' + initLat + ', ' + initLng);
+      const map = L.map(mapEl).setView([initLat, initLng], 12);
+      window.tripMap = map;
+
+      // 添加瓦片图层
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; CartoDB'
+      }).addTo(map);
+      log('瓦片图层已添加');
+
+      const points = [];
+
+      // 遍历所有地点
+      days.forEach(day => {
+        (day.locations || []).forEach(loc => {
+          if (loc.latitude && loc.longitude && loc.latitude !== 0 && loc.longitude !== 0) {
+            const marker = L.marker([loc.latitude, loc.longitude]).addTo(map);
+            log('添加标记: ' + loc.name);
+
+            let popupContent = `<b>${escapeHtml(loc.name)}</b><br>${escapeHtml(loc.description)}`;
+
+            if (loc.real_photo || loc.anime_photo) {
+              popupContent += '<div style="display:flex; gap:10px; margin-top:5px; flex-wrap:wrap;">';
+              if (loc.real_photo) {
+                popupContent += `<img src="${loc.real_photo}" alt="现实照片" style="max-width:150px; max-height:100px; object-fit:cover;" referrerpolicy="no-referrer" onerror="this.style.display='none'">`;
+              }
+              if (loc.anime_photo) {
+                popupContent += `<img src="${loc.anime_photo}" alt="动漫照片" style="max-width:150px; max-height:100px; object-fit:cover;" referrerpolicy="no-referrer" onerror="this.style.display='none'">`;
+              }
+              popupContent += '</div>';
+            }
+
+            marker.bindPopup(popupContent);
+            points.push([loc.latitude, loc.longitude]);
+          } else {
+            log('跳过无效坐标的地点: ' + loc.name);
+          }
+        });
+      });
+
+      // 绘制路线
+      if (points.length >= 2) {
+        const polyline = L.polyline(points, { color: 'red', weight: 3 }).addTo(map);
+        map.fitBounds(polyline.getBounds());
+        log('绘制路线，点数: ' + points.length);
+      } else if (points.length === 1) {
+        map.setView(points[0], 14);
+        log('只有一个点，视图已调整');
+      } else {
+        log('没有可用的点');
+      }
+
+      log('地图渲染完成');
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
+    // 显示调试面板
+    window.showDebug = function() {
+      const debugDiv = document.getElementById('debug');
+      if (debugDiv) debugDiv.style.display = 'block';
+    };
+  })();
+</script>
 </body>
 </html>
