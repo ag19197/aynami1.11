@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gs.ayanami.model.ChatRequest;
 import com.gs.ayanami.model.ChatResponse;
+import com.gs.ayanami.utils.RedisConversationCache;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -23,14 +24,18 @@ public class DifyClient {
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
 
+    private final RedisConversationCache redisCache;
+
     public DifyClient(
             @Value("${dify.api.url}") String apiUrl,
             @Value("${dify.api.key}") String apiKey,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            RedisConversationCache redisCache) {
         this.apiUrl = apiUrl;
         this.apiKey = apiKey;
-        this.webClient = WebClient.builder().build(); // 不设置baseUrl，手动指定完整URL
+        this.webClient = WebClient.builder().build();
         this.objectMapper = objectMapper;
+        this.redisCache = redisCache;
     }
 
     public ChatResponse sendMessage(ChatRequest request) {
@@ -64,9 +69,14 @@ public class DifyClient {
                         }
 
                         if (!content.isEmpty()) {
-                            // 累加内容
+                            // 累加内容到 finalAnswer（内存）
                             finalAnswer.accumulateAndGet(content, (old, newPart) -> old + newPart);
                             System.out.println("Appended content, current length: " + finalAnswer.get().length());
+
+                            // 同时将片段写入 Redis（如果 conversationId 已获取）
+                            if (conversationId.get() != null) {
+                                redisCache.appendAnswer(conversationId.get(), content);
+                            }
                         }
 
                         // 提取元数据（仅第一次设置）
@@ -99,7 +109,7 @@ public class DifyClient {
         );
 
         try {
-            boolean finished = latch.await(60, TimeUnit.SECONDS); // 从 30 秒改为 60 秒
+            boolean finished = latch.await(180, TimeUnit.SECONDS); // 从 30 秒改为 60 秒
             System.out.println("After await, finished=" + finished + ", finalAnswer length: " + finalAnswer.get().length());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
